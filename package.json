@@ -1,0 +1,12 @@
+{
+  "name": "refarch-aws-ecs-python-service",
+  "description": "",
+  "version": "0.0.1",
+  "dependencies": {},
+  "devDependencies": {
+    "serverless-parameters": "0.0.7"
+  },
+  "scripts": {
+    "setup": "pipenv install"
+  }
+}

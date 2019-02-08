@@ -1,0 +1,18 @@
+service: refarch-ecs-python-service
+
+plugins:
+  - serverless-parameters
+
+custom:
+  stage: "${opt:stage, env:SLS_STAGE, 'dev'}"
+
+provider:
+  name: aws
+  stage: "${self:custom.stage}"
+  stackTags:
+    x-service: "${self:service}"
+    x-stack: "${self:service}-${self:provider.stage}"
+
+resources:
+  Resources:
+    
