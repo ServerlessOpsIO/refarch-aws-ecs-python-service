@@ -1,0 +1,69 @@
+services:
+  - docker
+
+env:
+  global:
+    - ENV_DEV='dev'
+    - ENV_PROD='prod'
+    - IMAGE_REPO_DEV=355364402302.dkr.ecr.us-east-1.amazonaws.com
+    - IMAGE_NAME=refarch-ecs-python-service
+    - IMAGE_RELEASE=${TRAVIS_BUILD_NUMBER}
+    - IMAGE_TAG_DEV="${IMAGE_REPO_DEV}/${IMAGE_NAME}-${ENV_DEV}:${IMAGE_RELEASE}"
+    - IMAGE_TAG_DEV_LATEST="${IMAGE_REPO_DEV}/${IMAGE_NAME}-${ENV_DEV}:latest"
+    - AWS_REGION='us-east-1'
+
+stages:
+  - build
+  - tag-latest-dev
+
+jobs:
+  include:
+    - stage: build
+      # Travis doesn't actually care about the language for the build because
+      # it's done inside of the Docker container. We just set this reflective
+      # of the need for AWS CLI
+      language: python
+      python: '3.6'
+      sudo: required
+      install:
+        - pip install awscli
+        - aws configure set default.region $AWS_REGION
+        - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_DEV
+        - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_DEV
+        - $(aws ecr get-login --no-include-email --region $AWS_REGION)
+      script:
+        - docker build -t $IMAGE_TAG_DEV -f Dockerfile .
+      after_script:
+        - docker images
+      deploy:
+        provider: script
+        script: docker push $IMAGE_TAG_DEV
+        # Eventually we'd try and limit this to a PR state or something else.
+        # We could adjust image tag based on branch name and subsequent stages
+        # will involve adjusting the tag to green light an image for deployment.
+        on:
+          all_branches: true
+      after_deploy:
+        - rm -rf ~/.aws
+
+    - stage: tag-latest-dev
+      language: python
+      python: '3.6'
+      sudo: required
+      install:
+        - pip install awscli
+        - aws configure set default.region $AWS_REGION
+        - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID_DEV
+        - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY_DEV
+        - $(aws ecr get-login --no-include-email --region $AWS_REGION)
+      script:
+        - docker pull $IMAGE_TAG_DEV
+        - docker tag $IMAGE_TAG_DEV $IMAGE_TAG_DEV_LATEST
+      after_script:
+        - docker images
+      deploy:
+        provider: script
+        script: docker push $IMAGE_TAG_DEV_LATEST
+      after_deploy:
+        - rm -rf ~/.aws
+

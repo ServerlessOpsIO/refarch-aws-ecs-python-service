@@ -68,6 +68,7 @@ custom:
 provider:
   name: aws
   stage: "${self:custom.stage}"
+  cfnRole: "${ssm:/infra/deploy/prime/DeployRoleArn}"
   stackTags:
     x-service: "${self:service}"
     x-stack: "${self:service}-${self:provider.stage}"
