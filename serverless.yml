@@ -1,3 +1,5 @@
+# FIXME: Needs CloudWatch alarms
+
 service: refarch-ecs-python-service
 
 plugins:
@@ -148,7 +150,10 @@ resources:
         Conditions:
           - Field: path-pattern
             Values:
-              - Ref: UrlPath
+              - Fn::Join:
+                - '/'
+                - - Ref: UrlPath
+                  - '*'
         Actions:
           - TargetGroupArn:
               Ref: TargetGroup
