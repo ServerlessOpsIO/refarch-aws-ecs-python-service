@@ -10,16 +10,16 @@ custom:
     ServiceName:
       Type: String
       Description: "Service name"
-      Default: "${self:service}"
+      Default: "${self:service}-${self:provider.stage}"
 
     ServiceVersion:
       Type: String
       Description: "Service release build"
-      Default: 'latest'
+      Default: "${env:PARAM_SVC_VERSION, 'latest'}"
 
     ServiceMemory:
       Type: Number
-      Description: "Service memory in GB"
+      Description: "Service memory in MB"
       Default: 128
 
     ServicePort:
@@ -30,22 +30,32 @@ custom:
     ServiceInstancesMin:
       Type: Number
       Description: "Minimum number of task instances"
-      Default: "${env:SVC_INST_MIN, '3'}"
+      Default: "${env:PARAM_SVC_INST_MIN, '3'}"
 
     ServiceInstancesMax:
       Type: Number
       Description: "Maximum number of task instances"
-      Default: "${env:SVC_INST_MAX, '4'}"
+      Default: "${env:PARAM_SVC_INST_MAX, '4'}"
+
+    EcsClusterName:
+      Type: String
+      Description: "ECS cluster to run service"
+      Default: "refarch-ecs-${self:provider.stage}"
 
     VpcId:
       Type: AWS::SSM::Parameter::Value<AWS::EC2::VPC::Id>
       Description: "VPC ID"
       Default: "/infra/vpc/prime/VpcId"
 
-    AlbListener:
+    AlbListenerArn:
       Type: AWS::SSM::Parameter::Value<String>
       Description: "ARN of ECS cluster ALB Listener"
-      Default: "/refarch-ecs/${self:provider.stage}/AlbListener"
+      Default: "/refarch-ecs/${self:provider.stage}/AlbListenerArn"
+
+    AlbUrl:
+      Type: AWS::SSM::Parameter::Value<String>
+      Description: "URL of ALB"
+      Default: "/refarch-ecs/${self:provider.stage}/AlbUrl"
 
     UrlPath:
       Type: String
@@ -95,35 +105,6 @@ resources:
         RepositoryName:
           Ref: AWS::StackName
 
-    TaskDefinition:
-      Type: AWS::ECS::TaskDefinition
-      Properties:
-        Family:
-          Ref: ServiceName
-        ContainerDefinitions:
-          - Name:
-              Ref: AWS::StackName
-            Essential: true
-            Image:
-              Fn::Join:
-                - ":"
-                - - Fn::GetAtt:
-                    - EcrRepo
-                    - Arn
-                  - Ref: ServiceVersion
-            Memory:
-              Ref: ServicePort
-            PortMappings:
-              - ContainerPort:
-                  Ref: ServicePort
-            LogConfiguration:
-              LogDriver: awslogs
-              Options:
-                awslogs-group:
-                  Ref: CloudWatchLogsGroup
-                awslogs-region:
-                  Ref: AWS::Region
-
     ServiceRole:
       Type: AWS::IAM::Role
       Properties:
@@ -143,7 +124,8 @@ resources:
       Properties:
         VpcId:
           Ref: VpcId
-        Port: 80
+        Port:
+          Ref: ServicePort
         Protocol: HTTP
         Matcher:
           HttpCode: 200
@@ -161,7 +143,7 @@ resources:
       Type: AWS::ElasticLoadBalancingV2::ListenerRule
       Properties:
         ListenerArn:
-          Ref: AlbListener
+          Ref: AlbListenerArn
         Priority: 2
         Conditions:
           - Field: path-pattern
@@ -171,6 +153,69 @@ resources:
           - TargetGroupArn:
               Ref: TargetGroup
             Type: forward
+
+    TaskDefinition:
+      Type: AWS::ECS::TaskDefinition
+      Properties:
+        Family:
+          Ref: ServiceName
+        ContainerDefinitions:
+          - Name:
+              Ref: AWS::StackName
+            Essential: true
+            Environment:
+              - Name: URL_ROOT
+                Value:
+                  Fn::Join:
+                    - ''
+                    - - '/'
+                      - Ref: ServiceName
+            Image:
+              Fn::Join:
+                - ''
+                - - Ref: AWS::AccountId
+                  - '.dkr.ecr.'
+                  - Ref: AWS::Region
+                  - '.amazonaws.com/'
+                  - Ref: EcrRepo
+                  - ':'
+                  - Ref: ServiceVersion
+            Memory:
+              Ref: ServiceMemory
+            PortMappings:
+              - ContainerPort:
+                  Ref: ServicePort
+            LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group:
+                  Ref: CloudWatchLogsGroup
+                awslogs-region:
+                  Ref: AWS::Region
+
+    Service:
+      Type: AWS::ECS::Service
+      DependsOn: ListenerRule
+      Condition: IsNotInitDeploy
+      Properties:
+        Cluster:
+          Ref: EcsClusterName
+        Role:
+          Ref: ServiceRole
+        DesiredCount:
+          Ref: ServiceInstancesMin
+        TaskDefinition:
+          Ref: TaskDefinition
+        DeploymentConfiguration:
+          MinimumHealthyPercent: 100
+          MaximumPercent: 200
+        LoadBalancers:
+          - ContainerName:
+              Ref: ServiceName
+            ContainerPort:
+              Ref: ServicePort
+            TargetGroupArn:
+              Ref: TargetGroup
 
     EcrRepoUrlSsmParam:
       Type: AWS::SSM::Parameter
@@ -186,3 +231,15 @@ resources:
               - Ref: AWS::Region
               - '.amazonaws.com/'
               - Ref: EcrRepo
+
+    SvcUrlSsmParam:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: "/${self:service}/${self:provider.stage}/SvcUrl"
+        Description: "URL of service."
+        Type: String
+        Value:
+          Fn::Join:
+            - ''
+            - - Ref: AlbUrl
+              - Ref: UrlPath
