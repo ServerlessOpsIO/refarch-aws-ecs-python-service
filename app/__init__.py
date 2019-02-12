@@ -1,13 +1,16 @@
 #!env python3
 
 '''Example Flask app for ECS'''
+import os
+
 from flask import Flask
 from flask import jsonify
 
 app = Flask(__name__)
+URL_ROOT = os.environ.get('URL_ROOT', '')
 
 
-@app.route('/hello', methods=['GET'])
+@app.route(URL_ROOT + '/hello', methods=['GET'])
 def hello():
     '''Hello World'''
     message = {'message': 'Hello, World!'}
@@ -17,7 +20,7 @@ def hello():
     return resp
 
 
-@app.route('/health', methods=['GET'])
+@app.route(URL_ROOT + '/health', methods=['GET'])
 def health():
     '''Health endpoint'''
     message = {'health': 'OK'}
